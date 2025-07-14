@@ -24,37 +24,48 @@ const WEATHER_API_KEY = "85091dab5afb943e699dbb7519b302bc";
 function App() {
   const [sku, setSku] = useState("SKU_A");
   const [region, setRegion] = useState("North");
-  const [event, setEvent] = useState("concert");
+  const [eventOptions, setEventOptions] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState("none");
   const [buzz, setBuzz] = useState(60);
   const [prediction, setPrediction] = useState(null);
   const [weather, setWeather] = useState("loading...");
   const [buzzTrendData, setBuzzTrendData] = useState([]);
 
   const [totalStock, setTotalStock] = useState(300);
-  const [demand, setDemand] = useState({
-    North: 100,
-    South: 90,
-    East: 80,
-    West: 110,
-  });
+  const [demand, setDemand] = useState({ North: 100, South: 90, East: 80, West: 110 });
   const [allocation, setAllocation] = useState(null);
 
-  // Fetch real-time weather when region changes
   useEffect(() => {
     const fetchWeather = async () => {
-      const city = regionCityMap[region];
       try {
+        const city = regionCityMap[region];
         const res = await axios.get(
           `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${WEATHER_API_KEY}&units=metric`
         );
-        const weatherMain = res.data.weather[0].main.toLowerCase(); // e.g., 'rain', 'clouds'
-        setWeather(weatherMain);
-      } catch (err) {
-        console.error("Weather fetch failed:", err);
+        setWeather(res.data.weather[0].main.toLowerCase());
+      } catch {
         setWeather("unknown");
       }
     };
+
+    const fetchEvents = async () => {
+      try {
+        const res = await axios.post("http://localhost:8000/get-events", { region });
+        const opts = res.data.events.map((e) => e.toLowerCase());
+        setEventOptions(opts);
+        const firstEvent = opts[0] || "none";
+        setSelectedEvent(firstEvent);
+        const buzzScore = Math.min(100, 20 + opts.length * 8);
+        setBuzz(buzzScore);
+      } catch {
+        setEventOptions(["none"]);
+        setSelectedEvent("none");
+        setBuzz(40);
+      }
+    };
+
     fetchWeather();
+    fetchEvents();
   }, [region]);
 
   const predictDemand = async () => {
@@ -63,13 +74,13 @@ function App() {
         sku,
         region,
         weather,
-        event,
+        event: selectedEvent,
         buzz_score: buzz,
       });
       const predicted = res.data.predicted_demand;
       setPrediction(predicted);
       setBuzzTrendData((prev) => [...prev, { buzz, predicted }]);
-    } catch (err) {
+    } catch {
       alert("Prediction failed");
     }
   };
@@ -81,13 +92,13 @@ function App() {
         total_stock: totalStock,
       });
       setAllocation(res.data.allocation);
-    } catch (err) {
+    } catch {
       alert("Optimization failed");
     }
   };
 
   return (
-    <div className="App">
+    <div className="App dark-theme">
       <header className="header">
         <h1>📦 WalPredict Stock Intelligence</h1>
         <p>AI-Powered Demand Forecasting & Stock Optimization</p>
@@ -116,15 +127,15 @@ function App() {
 
         <div className="form-row">
           <label>Live Weather:</label>
-          <span>{weather}</span>
+          <span className="data-tag">{weather}</span>
         </div>
 
         <div className="form-row">
           <label>Event:</label>
-          <select value={event} onChange={(e) => setEvent(e.target.value)}>
-            <option>none</option>
-            <option>concert</option>
-            <option>sports</option>
+          <select value={selectedEvent} onChange={(e) => setSelectedEvent(e.target.value)}>
+            {eventOptions.map((ev, idx) => (
+              <option key={idx} value={ev}>{ev}</option>
+            ))}
           </select>
         </div>
 
@@ -139,9 +150,7 @@ function App() {
           />
         </div>
 
-        <button className="primary-btn" onClick={predictDemand}>
-          Predict
-        </button>
+        <button className="primary-btn" onClick={predictDemand}>Predict</button>
 
         {prediction !== null && (
           <p className="result">
@@ -153,24 +162,11 @@ function App() {
           <div className="chart-container">
             <h3>📊 Buzz vs Demand Trend</h3>
             <LineChart width={600} height={300} data={buzzTrendData}>
-              <CartesianGrid stroke="#ccc" />
-              <XAxis
-                dataKey="buzz"
-                label={{
-                  value: "Buzz Score",
-                  position: "insideBottom",
-                  offset: -5,
-                }}
-              />
-              <YAxis
-                label={{
-                  value: "Predicted Demand",
-                  angle: -90,
-                  position: "insideLeft",
-                }}
-              />
+              <CartesianGrid stroke="#555" />
+              <XAxis dataKey="buzz" stroke="#00fff7" />
+              <YAxis stroke="#00fff7" />
               <Tooltip />
-              <Line type="monotone" dataKey="predicted" stroke="#007BFF" />
+              <Line type="monotone" dataKey="predicted" stroke="#00c2ff" strokeWidth={2} />
             </LineChart>
           </div>
         )}
@@ -178,18 +174,17 @@ function App() {
 
       <div className="card">
         <h2>📊 Stock Optimization</h2>
-        {["North", "South", "East", "West"].map((r) => (
+        {Object.keys(demand).map((r) => (
           <div className="form-row" key={r}>
             <label>{r} Demand:</label>
             <input
               type="number"
               value={demand[r]}
-              onChange={(e) =>
-                setDemand({ ...demand, [r]: Number(e.target.value) })
-              }
+              onChange={(e) => setDemand({ ...demand, [r]: Number(e.target.value) })}
             />
           </div>
         ))}
+
         <div className="form-row">
           <label>Total Stock:</label>
           <input
@@ -198,26 +193,18 @@ function App() {
             onChange={(e) => setTotalStock(Number(e.target.value))}
           />
         </div>
-        <button className="primary-btn" onClick={optimizeStock}>
-          Optimize
-        </button>
+
+        <button className="primary-btn" onClick={optimizeStock}>Optimize</button>
 
         {allocation && (
           <div className="chart-container">
             <h3>📦 Allocated Stock per Region</h3>
-            <BarChart
-              width={600}
-              height={300}
-              data={Object.entries(allocation).map(([r, v]) => ({
-                region: r,
-                value: v,
-              }))}
-            >
-              <CartesianGrid stroke="#ccc" />
-              <XAxis dataKey="region" />
-              <YAxis />
+            <BarChart width={600} height={300} data={Object.entries(allocation).map(([r, v]) => ({ region: r, value: v }))}>
+              <CartesianGrid stroke="#555" />
+              <XAxis dataKey="region" stroke="#00fff7" />
+              <YAxis stroke="#00fff7" />
               <Tooltip />
-              <Bar dataKey="value" fill="#28a745" />
+              <Bar dataKey="value" fill="#39ff14" />
             </BarChart>
           </div>
         )}
