@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
   LineChart,
@@ -12,13 +12,22 @@ import {
 } from "recharts";
 import "./App.css";
 
+const regionCityMap = {
+  North: "New York",
+  South: "Houston",
+  East: "Boston",
+  West: "Los Angeles",
+};
+
+const WEATHER_API_KEY = "85091dab5afb943e699dbb7519b302bc";
+
 function App() {
   const [sku, setSku] = useState("SKU_A");
   const [region, setRegion] = useState("North");
-  const [weather, setWeather] = useState("cold");
   const [event, setEvent] = useState("concert");
   const [buzz, setBuzz] = useState(60);
   const [prediction, setPrediction] = useState(null);
+  const [weather, setWeather] = useState("loading...");
   const [buzzTrendData, setBuzzTrendData] = useState([]);
 
   const [totalStock, setTotalStock] = useState(300);
@@ -29,6 +38,24 @@ function App() {
     West: 110,
   });
   const [allocation, setAllocation] = useState(null);
+
+  // Fetch real-time weather when region changes
+  useEffect(() => {
+    const fetchWeather = async () => {
+      const city = regionCityMap[region];
+      try {
+        const res = await axios.get(
+          `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${WEATHER_API_KEY}&units=metric`
+        );
+        const weatherMain = res.data.weather[0].main.toLowerCase(); // e.g., 'rain', 'clouds'
+        setWeather(weatherMain);
+      } catch (err) {
+        console.error("Weather fetch failed:", err);
+        setWeather("unknown");
+      }
+    };
+    fetchWeather();
+  }, [region]);
 
   const predictDemand = async () => {
     try {
@@ -88,13 +115,8 @@ function App() {
         </div>
 
         <div className="form-row">
-          <label>Weather:</label>
-          <select value={weather} onChange={(e) => setWeather(e.target.value)}>
-            <option>cold</option>
-            <option>hot</option>
-            <option>sunny</option>
-            <option>rainy</option>
-          </select>
+          <label>Live Weather:</label>
+          <span>{weather}</span>
         </div>
 
         <div className="form-row">
@@ -122,7 +144,9 @@ function App() {
         </button>
 
         {prediction !== null && (
-          <p className="result">📈 Predicted Demand: <strong>{prediction} units</strong></p>
+          <p className="result">
+            📈 Predicted Demand: <strong>{prediction} units</strong>
+          </p>
         )}
 
         {buzzTrendData.length > 1 && (
