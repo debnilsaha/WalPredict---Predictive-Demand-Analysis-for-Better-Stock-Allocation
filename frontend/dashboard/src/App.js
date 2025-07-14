@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import {
   LineChart,
@@ -13,9 +13,10 @@ import {
 import "./App.css";
 
 function App() {
+  // State for inputs and results
   const [sku, setSku] = useState("SKU_A");
   const [region, setRegion] = useState("North");
-  const [weather, setWeather] = useState("cold");
+  const [weatherDesc, setWeatherDesc] = useState("");
   const [event, setEvent] = useState("concert");
   const [buzz, setBuzz] = useState(60);
   const [prediction, setPrediction] = useState(null);
@@ -30,26 +31,65 @@ function App() {
   });
   const [allocation, setAllocation] = useState(null);
 
-  const predictDemand = async () => {
+  // Fetch live weather when region changes
+  const fetchWeather = async (regionName) => {
+    const API_KEY = "1ddfe6d3b7f014a1bf35d2b1ccf87d39"; 
+    const cityMap = {
+      North: "New York",
+      South: "Miami",
+      East: "Boston",
+      West: "San Francisco",
+    };
     try {
-      const res = await axios.post("http://localhost:8000/predict-demand", {
+      const res = await axios.get(
+        `https://api.openweathermap.org/data/2.5/weather?q=${cityMap[regionName]}&appid=${API_KEY}`
+      );
+      const desc = res.data.weather[0].main.toLowerCase();
+      setWeatherDesc(desc);
+    } catch (err) {
+      console.error("Weather fetch error:", err);
+      setWeatherDesc("unavailable");
+    }
+  };
+
+  // Update region and fetch its weather
+  const handleRegionChange = (e) => {
+    const selected = e.target.value;
+    setRegion(selected);
+    fetchWeather(selected);
+  };
+
+  // Initialize weather on mount
+  useEffect(() => {
+    fetchWeather(region);
+  }, []);
+
+  // Demand prediction API call
+  const predictDemand = async () => {
+    console.log("Predict button clicked");
+    try {
+      const params = new URLSearchParams({
         sku,
         region,
-        weather,
+        weather: weatherDesc,
         event,
         buzz_score: buzz,
       });
+      const res = await axios.get(`http://localhost:8080/predict-demand?${params.toString()}`);
       const predicted = res.data.predicted_demand;
       setPrediction(predicted);
+      console.log("Current weather in", region, "is", weatherDesc);
       setBuzzTrendData((prev) => [...prev, { buzz, predicted }]);
     } catch (err) {
+      console.error("Prediction error:", err);
       alert("Prediction failed");
     }
   };
 
+  // Stock optimization API call
   const optimizeStock = async () => {
     try {
-      const res = await axios.post("http://localhost:8000/optimize-stock", {
+      const res = await axios.post("http://localhost:8080/optimize-stock", {
         predictions: demand,
         total_stock: totalStock,
       });
@@ -79,7 +119,7 @@ function App() {
 
         <div className="form-row">
           <label>Region:</label>
-          <select value={region} onChange={(e) => setRegion(e.target.value)}>
+          <select value={region} onChange={handleRegionChange}>
             <option>North</option>
             <option>South</option>
             <option>East</option>
@@ -88,13 +128,8 @@ function App() {
         </div>
 
         <div className="form-row">
-          <label>Weather:</label>
-          <select value={weather} onChange={(e) => setWeather(e.target.value)}>
-            <option>cold</option>
-            <option>hot</option>
-            <option>sunny</option>
-            <option>rainy</option>
-          </select>
+          <label>Live Weather:</label>
+          <span className="weather">{weatherDesc}</span>
         </div>
 
         <div className="form-row">
@@ -122,7 +157,9 @@ function App() {
         </button>
 
         {prediction !== null && (
-          <p className="result">📈 Predicted Demand: <strong>{prediction} units</strong></p>
+          <p className="result">
+            📈 Predicted Demand: <strong>{prediction} units</strong>
+          </p>
         )}
 
         {buzzTrendData.length > 1 && (
@@ -139,11 +176,7 @@ function App() {
                 }}
               />
               <YAxis
-                label={{
-                  value: "Predicted Demand",
-                  angle: -90,
-                  position: "insideLeft",
-                }}
+                label={{ value: "Predicted Demand", angle: -90, position: "insideLeft" }}
               />
               <Tooltip />
               <Line type="monotone" dataKey="predicted" stroke="#007BFF" />
@@ -154,7 +187,7 @@ function App() {
 
       <div className="card">
         <h2>📊 Stock Optimization</h2>
-        {["North", "South", "East", "West"].map((r) => (
+        {Object.keys(demand).map((r) => (
           <div className="form-row" key={r}>
             <label>{r} Demand:</label>
             <input
@@ -184,10 +217,7 @@ function App() {
             <BarChart
               width={600}
               height={300}
-              data={Object.entries(allocation).map(([r, v]) => ({
-                region: r,
-                value: v,
-              }))}
+              data={Object.entries(allocation).map(([r, v]) => ({ region: r, value: v }))}
             >
               <CartesianGrid stroke="#ccc" />
               <XAxis dataKey="region" />

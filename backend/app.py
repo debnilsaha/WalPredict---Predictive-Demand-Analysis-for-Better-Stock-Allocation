@@ -10,15 +10,13 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 model = joblib.load('model/demand_model.pkl')
 encoder = joblib.load('model/encoder.pkl')
 
-@app.route('/predict-demand', methods=['POST'])
+@app.route('/predict-demand', methods=['GET'])
 def predict_demand():
-    data = request.get_json()
-
-    sku = data.get('sku')
-    region = data.get('region')
-    weather = data.get('weather')
-    event = data.get('event')
-    buzz_score = data.get('buzz_score')
+    sku = request.args.get('sku')
+    region = request.args.get('region')
+    weather = request.args.get('weather')
+    event = request.args.get('event')
+    buzz_score = request.args.get('buzz_score', type=float)
 
     df = pd.DataFrame([{
         'sku': sku,
@@ -50,5 +48,5 @@ def home():
     return 'WalPredict API Running!'
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8000)
+    app.run(debug=True, port=8080)
 
